@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+    - master
+  push:
+    branches:
+    - master
+  schedule:
+    - cron: '28 10 * * *'
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.6', '3.7']
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Python
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python }}
+
+    - uses: actions/cache@v1
+      with:
+        path: ${{ env.pythonLocation }}
+        key: ${{ runner.os }}-pydeps-${{ env.pythonLocation }}-${{ hashFiles('setup.py') }}-${{ hashFiles('dev-requirements.txt') }}
+
+    - name: Install requirements
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install --upgrade --upgrade-strategy eager -e . -r dev-requirements.txt
+
+    - name: Show pip freeze
+      run: |
+        pip freeze
+
+    - name: Format
+      if: always()
+      run: |
+        make format
+
+    - name: Lint
+      if: always()
+      run: |
+        make lint
+
+    - name: Type check
+      if: always()
+      run: |
+        make typecheck
+
+    - name: Run tests
+      if: always()
+      run: |
+        make test
+
+    - name: Run tests
+      if: always()
+      run: |
+        pip uninstall -y allennlp-beaker
