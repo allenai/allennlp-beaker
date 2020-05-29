@@ -60,7 +60,7 @@ jobs:
       run: |
         make test
 
-    - name: Run tests
+    - name: Clean up
       if: always()
       run: |
         pip uninstall -y allennlp-beaker

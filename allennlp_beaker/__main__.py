@@ -49,6 +49,8 @@ ENV IGNORE_ALLENNLP_IN_SETUP true
 ARG PACKAGES
 
 RUN pip install --no-cache-dir ${PACKAGES}
+
+COPY . .
 """
 
 
@@ -59,13 +61,17 @@ def echo_command_output(cmd: List[str]) -> None:
 
 def shell_out_command(cmd: List[str]) -> Iterable[str]:
     try:
-        for line in subprocess.Popen(  # type: ignore
+        child = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-        ).stdout:
-            yield line.rstrip()
+            check=True,
+        )
+        for line in child.stdout.split("\n"):
+            line = line.rstrip()
+            if line.strip():
+                yield line
     except subprocess.CalledProcessError as exc:
         raise click.ClickException(click.style(exc.output, fg="red"))
     except FileNotFoundError as exc:
@@ -113,9 +119,11 @@ def parse_version(ctx, param, version) -> str:
         git_url = f"https://github.com/allenai/{package}"
         if version == "git@master":
             # Get the latest commit from the git repo.
-            latest_commits = list(
-                shell_out_command(["git", "ls-remote", git_url + ".git"])
-            )
+            click.secho("Checking for latest commit...", fg="yellow")
+            with click_spinner.spinner():
+                latest_commits = list(
+                    shell_out_command(["git", "ls-remote", git_url + ".git"])
+                )
             latest = latest_commits[0].split("\t")[0]
             version = f"git+{git_url}.git@{latest}"
         else:
@@ -219,9 +227,12 @@ def run(
         training_config_path = os.path.join(context_dir, "config.jsonnet")
         shutil.copyfile(config, training_config_path)
 
+        # Create a unique tag to use.
         image_id = str(uuid.uuid4())
+
         local_image_name = f"allennlp-beaker-{name}:{image_id}"
         beaker_image_name = f"allennlp-beaker-{name}-{image_id}"
+
         if models_version:
             packages = models_version + " " + packages
         packages = packages.strip()
@@ -267,9 +278,20 @@ def run(
 
         # Publish the image to beaker.
         click.echo("Publishing image to beaker...")
-        echo_command_output(
-            ["beaker", "image", "create", "-n", beaker_image_name, local_image_name]
-        )
+        with click_spinner.spinner():
+            deque(
+                shell_out_command(
+                    [
+                        "beaker",
+                        "image",
+                        "create",
+                        "-n",
+                        beaker_image_name,
+                        local_image_name,
+                    ]
+                ),
+                maxlen=0,
+            )
 
         # Submit the experiment to beaker.
         click.echo("Submitting experiment to beaker...")
