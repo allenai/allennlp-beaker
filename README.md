@@ -19,7 +19,11 @@ pip install git+https://github.com/allenai/allennlp-beaker.git
 Submit a training job to beaker with
 
 ```bash
-allennlp-beaker --config PATH_TO_TRAINING_CONFIG.jsonnet
+allennlp-beaker PATH_TO_TRAINING_CONFIG.jsonnet
 ```
 
-and then follow the prompts.
+and then follow the prompts. For more information, run the help command:
+
+```bash
+allennlp-beaker --help
+```

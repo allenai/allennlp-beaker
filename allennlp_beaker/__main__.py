@@ -1,4 +1,5 @@
 from collections import deque
+from datetime import date
 import os
 import shutil
 import subprocess
@@ -134,11 +135,26 @@ def parse_version(ctx, param, version) -> str:
     return version
 
 
-def check_for_beaker(ctx, param, value):
+def check_for_beaker():
     # Print beaker version for debugging. If beaker is not installed, this will
     # exit with an error an notify the user.
-    echo_command_output([value, "--version"])
-    return value
+    echo_command_output(["beaker", "--version"])
+
+
+_DEFAULT_EXPERIMENT_NAME: Optional[str] = None
+
+
+def setup(ctx, param, config_path):
+    check_for_beaker()
+    path = cached_path(config_path)
+    # If this is a local json/jsonnet file, we'll use the file basename as the
+    # the default name of the experiment.
+    global _DEFAULT_EXPERIMENT_NAME
+    if path.endswith(".json") or path.endswith(".jsonnet"):
+        _DEFAULT_EXPERIMENT_NAME = os.path.splitext(os.path.basename(path))[
+            0
+        ] + date.today().strftime("_%Y%m%d")
+    return path
 
 
 def parse_gpus(ctx, param, value):
@@ -160,39 +176,31 @@ def parse_gpus(ctx, param, value):
 
 
 @click.command()
-@click.option(
-    "--beaker",
-    default="beaker",
-    help="The beaker executable to use.",
-    callback=check_for_beaker,
+@click.argument(
+    "config", callback=setup,
 )
 @click.option(
     "--name",
     prompt="What do you want to call your experiment?",
-    help="The name of the experiment on beaker.",
-)
-@click.option(
-    "--config",
-    prompt="Where is your configuration file?",
-    help="The path to your AllenNLP configuration file.",
-    callback=lambda ctx, param, value: cached_path(value),
+    default=lambda: _DEFAULT_EXPERIMENT_NAME,
+    help="The name to give the experiment on beaker.",
 )
 @click.option(
     "--allennlp-version",
     prompt="What version of AllenNLP do you want to use?",
     default="git@master",
+    show_default=True,
     help="The PyPI version, branch, or commit SHA of AlleNLP to use. "
     "Git branches and commits should be prefixed with 'git@'. For example, "
-    "'git@master'.",
+    "'git@master' or '1.0.0rc5'.",
     callback=parse_version,
 )
 @click.option(
     "--models-version",
     prompt="What version (if any) of AllenNLP Models do you want to use?",
     default="",
-    help="The PyPI version, branch, or commit SHA of AllenNLP Models to use."
-    "Git branches and commits should be prefixed with 'git@'. For example, "
-    "'git@master'.",
+    help="The PyPI version, branch, or commit SHA of AllenNLP Models to use, if any. "
+    "Git branches and commits should be prefixed with 'git@'.",
     callback=parse_version,
 )
 @click.option(
@@ -203,22 +211,28 @@ def parse_gpus(ctx, param, value):
     default="",
 )
 @click.option(
-    "--gpus", default=None, callback=parse_gpus,
+    "--gpus",
+    default=None,
+    show_default="parsed from training config",
+    callback=parse_gpus,
+    help="The number of GPUs to reserve for your experiment. If not specified "
+    "the GPUs will be guessed from the training config.",
 )
 @click.option(
     "--workspace",
-    default=None,
+    default=os.environ.get("BEAKER_DEFAULT_WORKSPACE", ""),
+    show_default="$BEAKER_DEFAULT_WORKSPACE",
+    prompt="Which workspace beaker workspace do you want to use?",
     help="The beaker workspace to submit the experiment to.",
 )
 def run(
-    beaker: str,
-    name: str,
     config: str,
+    name: str,
     allennlp_version: str,
     models_version: str,
     packages: str,
     gpus: int,
-    workspace: Optional[str],
+    workspace: str,
 ):
     # We create a temp directory to use as context for the Docker build, and
     # also to create a  temporary beaker config file.
