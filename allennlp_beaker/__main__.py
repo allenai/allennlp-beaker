@@ -38,6 +38,8 @@ ENTRYPOINT ["allennlp"]
 ARG ALLENNLP
 
 RUN pip install --no-cache-dir ${ALLENNLP}
+
+COPY . .
 """
 
 DOCKERFILE_EXTRA_STEPS = """
@@ -50,8 +52,6 @@ ENV IGNORE_ALLENNLP_IN_SETUP true
 ARG PACKAGES
 
 RUN pip install --no-cache-dir ${PACKAGES}
-
-COPY . .
 """
 
 
@@ -172,6 +172,8 @@ def parse_gpus(ctx, param, value):
                 gpus = 1
         value = gpus
         click.echo("Config specifies " + click.style(f"{value}", fg="green") + " gpus")
+    elif not isinstance(value, int):
+        value = int(value)
     return value
 
 
@@ -215,6 +217,7 @@ def parse_gpus(ctx, param, value):
     default=None,
     show_default="parsed from training config",
     callback=parse_gpus,
+    type=click.INT,
     help="The number of GPUs to reserve for your experiment. If not specified "
     "the GPUs will be guessed from the training config.",
 )
@@ -225,6 +228,7 @@ def parse_gpus(ctx, param, value):
     prompt="Which workspace beaker workspace do you want to use?",
     help="The beaker workspace to submit the experiment to.",
 )
+@click.option("-v", "--verbose", count=True)
 def run(
     config: str,
     name: str,
@@ -233,6 +237,7 @@ def run(
     packages: str,
     gpus: int,
     workspace: str,
+    verbose: int,
 ):
     # We create a temp directory to use as context for the Docker build, and
     # also to create a  temporary beaker config file.
@@ -272,6 +277,11 @@ def run(
                 )
             )
 
+        if verbose:
+            click.echo("Beaker config:")
+            for line in shell_out_command(["cat", beaker_config_path]):
+                print(line)
+
         # Build the Docker image.
         click.echo(
             "Building docker image with name "
@@ -287,8 +297,12 @@ def run(
         if packages:
             build_args.extend(["--build-arg", f"PACKAGES={packages}"])
         build_args.extend(["-t", local_image_name, context_dir])
-        with click_spinner.spinner():
-            deque(shell_out_command(build_args), maxlen=0)
+        if verbose:
+            for line in shell_out_command(build_args):
+                print(line)
+        else:
+            with click_spinner.spinner():
+                deque(shell_out_command(build_args), maxlen=0)
 
         # Publish the image to beaker.
         click.echo("Publishing image to beaker...")
