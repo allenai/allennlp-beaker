@@ -4,7 +4,7 @@ import os
 import shutil
 import subprocess
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, List, Iterable, Optional
+from typing import Any, Dict, List, Iterable, Optional, Tuple
 import uuid
 
 from allennlp.common.file_utils import cached_path
@@ -129,6 +129,8 @@ def parse_version(ctx, param, version) -> str:
             version = f"git+{git_url}.git@{latest}"
         else:
             version = f"git+{git_url}.{version}"
+    elif version.startswith("git+"):
+        pass
     else:
         version = f"{package}=={version}"
     click.echo("Using " + click.style(f"{version}", fg="green"))
@@ -174,6 +176,14 @@ def parse_gpus(ctx, param, value):
         click.echo("Config specifies " + click.style(f"{value}", fg="green") + " gpus")
     elif not isinstance(value, int):
         value = int(value)
+    return value
+
+
+def validate_includes(ctx, param, value):
+    if value:
+        for path, _ in value:
+            if not os.path.exists(path):
+                raise click.BadParameter(f"path {path} doesn't exit")
     return value
 
 
@@ -228,7 +238,16 @@ def parse_gpus(ctx, param, value):
     prompt="Which workspace beaker workspace do you want to use?",
     help="The beaker workspace to submit the experiment to.",
 )
+@click.option(
+    "--include",
+    type=(str, str),
+    multiple=True,
+    prompt="Do you want to include any other files or directories?",
+    help="A list of files or directories to include.",
+    callback=validate_includes,
+)
 @click.option("-v", "--verbose", count=True)
+@click.option("--dry-run", is_flag=True)
 def run(
     config: str,
     name: str,
@@ -237,7 +256,9 @@ def run(
     packages: str,
     gpus: int,
     workspace: str,
+    include: Tuple[Tuple[str, str], ...],
     verbose: int,
+    dry_run: bool,
 ):
     # We create a temp directory to use as context for the Docker build, and
     # also to create a  temporary beaker config file.
@@ -282,6 +303,16 @@ def run(
             for line in shell_out_command(["cat", beaker_config_path]):
                 print(line)
 
+        # Copy any other include files.
+        if include:
+            for (path, dest) in include:
+                dest = os.path.join(context_dir, dest)
+                click.echo(f"Copying {path} to {dest}")
+                if os.path.isdir(path):
+                    shutil.copytree(path, dest)
+                else:
+                    shutil.copy(path, dest)
+
         # Build the Docker image.
         click.echo(
             "Building docker image with name "
@@ -303,6 +334,13 @@ def run(
         else:
             with click_spinner.spinner():
                 deque(shell_out_command(build_args), maxlen=0)
+
+        if dry_run:
+            click.echo("Run the following to check the Docker image:\n")
+            click.echo(
+                f"  docker run --rm -it --entrypoint /bin/bash {local_image_name}"
+            )
+            return None
 
         # Publish the image to beaker.
         click.echo("Publishing image to beaker...")
