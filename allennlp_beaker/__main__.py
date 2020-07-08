@@ -14,7 +14,7 @@ import click_spinner
 import yaml
 
 
-DEFAULT_CLUSTER = "ai2/on-prem-ai2-server1"
+DEFAULT_CLUSTER = "ai2/on-prem-ai2-server2"
 DOCKERFILE = """
 FROM python:3.7
 
@@ -94,13 +94,7 @@ def create_beaker_config(
                 "spec": {
                     "image": image,
                     "resultPath": "/output",
-                    "args": [
-                        "train",
-                        "config.jsonnet",
-                        "-s",
-                        "/output",
-                        "--file-friendly-logging",
-                    ],
+                    "args": ["train", "config.jsonnet", "-s", "/output",],
                     "requirements": {"gpuCount": gpus},
                 },
                 "cluster": cluster,
@@ -235,7 +229,7 @@ def validate_includes(ctx, param, value):
     "--workspace",
     default=os.environ.get("BEAKER_DEFAULT_WORKSPACE", ""),
     show_default="$BEAKER_DEFAULT_WORKSPACE",
-    prompt="Which workspace beaker workspace do you want to use?",
+    prompt="Which beaker workspace do you want to use?",
     help="The beaker workspace to submit the experiment to.",
 )
 @click.option(
@@ -248,6 +242,9 @@ def validate_includes(ctx, param, value):
 )
 @click.option("-v", "--verbose", count=True)
 @click.option("--dry-run", is_flag=True)
+@click.option(
+    "--cluster", type=str, default=DEFAULT_CLUSTER, help="The beaker cluster to use."
+)
 def run(
     config: str,
     name: str,
@@ -259,13 +256,15 @@ def run(
     include: Tuple[Tuple[str, str], ...],
     verbose: int,
     dry_run: bool,
+    cluster: str,
 ):
     # We create a temp directory to use as context for the Docker build, and
     # also to create a  temporary beaker config file.
     with TemporaryDirectory() as context_dir:
         # Write the training config to the context directory.
         training_config_path = os.path.join(context_dir, "config.jsonnet")
-        shutil.copyfile(config, training_config_path)
+        params = Params.from_file(config)
+        params.to_file(training_config_path)
 
         # Create a unique tag to use.
         image_id = str(uuid.uuid4())
@@ -294,6 +293,7 @@ def run(
                         image=beaker_image_name,
                         gpus=gpus,
                         description=f"{allennlp_version} {packages}",
+                        cluster=cluster,
                     )
                 )
             )
