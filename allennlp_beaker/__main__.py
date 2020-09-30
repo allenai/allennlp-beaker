@@ -94,7 +94,13 @@ def create_beaker_config(
                 "spec": {
                     "image": image,
                     "resultPath": "/output",
-                    "args": ["train", "config.jsonnet", "-s", "/output",],
+                    "args": [
+                        "train",
+                        "config.jsonnet",
+                        "-s",
+                        "/output",
+                        "--file-friendly-logging",
+                    ],
                     "requirements": {"gpuCount": gpus},
                 },
                 "cluster": cluster,
