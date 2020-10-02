@@ -239,6 +239,13 @@ def validate_includes(ctx, param, value):
     help="The beaker workspace to submit the experiment to.",
 )
 @click.option(
+    "--user",
+    default=os.environ.get("BEAKER_DEFAULT_USER", ""),
+    show_default="$BEAKER_DEFAULT_USER",
+    prompt="What is your beaker username?",
+    help="The beaker username to submit the experiment under.",
+)
+@click.option(
     "--include",
     type=(str, str),
     multiple=True,
@@ -259,6 +266,7 @@ def run(
     packages: str,
     gpus: int,
     workspace: str,
+    user: str,
     include: Tuple[Tuple[str, str], ...],
     verbose: int,
     dry_run: bool,
@@ -296,7 +304,7 @@ def run(
                 yaml.dump(
                     create_beaker_config(
                         name=name,
-                        image=beaker_image_name,
+                        image=user + "/" + beaker_image_name,
                         gpus=gpus,
                         description=f"{allennlp_version} {packages}",
                         cluster=cluster,
