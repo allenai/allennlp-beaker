@@ -49,6 +49,9 @@ ENV ALLENNLP_VERSION_OVERRIDE allennlp
 # To be compatible with older versions of allennlp-models.
 ENV IGNORE_ALLENNLP_IN_SETUP true
 
+# Disable parallelism in tokenizers because it doesn't help, and sometimes hurts.
+ENV TOKENIZERS_PARALLELISM 0
+
 ARG PACKAGES
 
 RUN pip install --no-cache-dir ${PACKAGES}
@@ -189,7 +192,8 @@ def validate_includes(ctx, param, value):
 
 @click.command()
 @click.argument(
-    "config", callback=setup,
+    "config",
+    callback=setup,
 )
 @click.option(
     "--name",
